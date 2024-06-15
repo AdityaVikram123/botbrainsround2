@@ -1,0 +1,113 @@
+#include <Servo.h>
+#include <avr/sleep.h>
+
+// Pin definitions
+const int soilMoisturePin = A0;
+const int potentiometerPin = A1;
+const int pumpPin = 9;
+const int buttonPin = 2;
+const int buzzerPin = 6;
+const int feedbackLedPin = 7;
+
+// Servo motor
+Servo servoMotor;
+
+// System state
+bool systemActive = true;
+
+void setup() {
+  // Initialize pins
+  pinMode(soilMoisturePin, INPUT);
+  pinMode(potentiometerPin, INPUT);
+  pinMode(pumpPin, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(feedbackLedPin, OUTPUT);
+
+  // Attach the servo motor
+  servoMotor.attach(10);
+
+  // Start serial communication for debugging
+  Serial.begin(9600);
+
+  // Configure the button pin as an interrupt to wake the system
+  attachInterrupt(digitalPinToInterrupt(buttonPin), wakeUp, FALLING);
+}
+
+void loop() {
+  if (systemActive) {
+    // Read soil moisture level
+    int soilMoisture = analogRead(soilMoisturePin);
+
+    // Read and map potentiometer value to threshold range
+    int threshold = map(analogRead(potentiometerPin), 0, 1023, 0, 1000);
+
+    // Print values for debugging
+    Serial.print("Soil Moisture: ");
+    Serial.print(soilMoisture);
+    Serial.print(" | Threshold: ");
+    Serial.println(threshold);
+
+    // Check if soil moisture is below the threshold
+    if (soilMoisture < threshold) {
+      // Start watering
+      digitalWrite(pumpPin, HIGH);
+      servoMotor.write(90);
+      feedback(true);
+      delay(5000); // Watering duration
+
+      // Stop watering
+      digitalWrite(pumpPin, LOW);
+      servoMotor.write(0);
+      feedback(false);
+    }
+
+    // Delay between checks
+    delay(1000);
+  } else {
+    // Enter sleep mode to conserve power
+    enterSleepMode();
+  }
+}
+
+// Provide feedback with buzzer and LED
+void feedback(bool watering) {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(feedbackLedPin, HIGH);
+    digitalWrite(buzzerPin, HIGH);
+    delay(200); // Feedback duration
+    digitalWrite(feedbackLedPin, LOW);
+    digitalWrite(buzzerPin, LOW);
+    delay(200); // Interval between feedback signals
+  }
+
+  if (watering) {
+    Serial.println("Watering started.");
+  } else {
+    Serial.println("Watering stopped.");
+  }
+}
+
+// Wake up the system (interrupt service routine)
+void wakeUp() {
+  systemActive = true;
+  detachInterrupt(digitalPinToInterrupt(buttonPin));
+  Serial.println("System activated.");
+}
+
+// Enter sleep mode
+void enterSleepMode() {
+  Serial.println("Entering sleep mode...");
+  delay(100); // Debounce delay
+
+  // Set the system to sleep mode
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  sleep_enable();
+  attachInterrupt(digitalPinToInterrupt(buttonPin), wakeUp, FALLING);
+  sleep_mode();
+
+  // System continues from here when wake up occurs
+  sleep_disable();
+  Serial.println("Waking up from sleep mode...");
+}
+
